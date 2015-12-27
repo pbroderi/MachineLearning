@@ -1,0 +1,120 @@
+---
+title: "Machine Learbning Project"
+author: "Paul"
+date: "Wednesday, December 09, 2015"
+output: html_document
+---
+
+# Background
+
+The following is a crude attempt to build a model which will predict the class of exercise based on accelerometers attached to the subject. 
+
+
+
+ 
+```{r}
+library(caret)
+library(AppliedPredictiveModeling)
+
+trainingData <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+
+testData <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+
+
+#Some code for easily subsetting the table.
+
+
+
+inTrain<-createDataPartition(y=trainingData$class, p=0.75, list=FALSE)
+
+training<- trainingData[inTrain,]
+testing <- trainingData[-inTrain,]
+
+tr2 <- na.omit(training)
+tr3 <- tr2[,8:160]
+
+modFit3 <- train(classe~stddev_roll_belt+min_roll_forearm+var_accel_dumbbell+avg_pitch_dumbbell, method="rpart", data=tr3)
+
+
+#For exploration purposes:
+
+modFit <- train(classe~., method="rpart", data=training[8:160])
+print(modFit$finalModel)
+pred<-predict(modFit,newdata=testing)
+
+featurePlot(x=training[,c( "kurtosis_roll_belt","kurtosis_picth_belt","kurtosis_picth_dumbbell")],y = training$classe)
+
+
+table(training$classe)
+```
+
+   A    B    C    D    E 
+4185 2848 2567 2412 2706
+
+
+
+
+
+
+"plot(modFit$finalModel)" returns
+
+1) root 299 218 A (0.27 0.17 0.18 0.17 0.2)  
+  2) X< 5594 81   0 A (1 0 0 0 0) *
+  3) X>=5594 218 158 E (0 0.23 0.25 0.24 0.28)  
+    6) X< 16023.5 158 103 C (0 0.32 0.35 0.33 0) *
+    7) X>=16023.5 60   0 E (0 0 0 0 1)
+    
+    From this I discovered that X is an index and the classes are presented in order.
+    
+Correcting for labels presents:
+
+n= 299 
+
+node), split, n, loss, yval, (yprob)
+      * denotes terminal node
+
+ 1) root 299 218 A (0.27 0.17 0.18 0.17 0.2)  
+   2) stddev_roll_belt< 1.35 242 162 A (0.33 0.21 0.23 0.18 0.058)  
+     4) min_roll_forearm< -34.6 27   0 A (1 0 0 0 0) *
+     5) min_roll_forearm>=-34.6 215 160 C (0.25 0.23 0.26 0.2 0.065)  
+      10) var_accel_dumbbell>=3.16975 41  12 B (0.073 0.71 0.049 0.024 0.15) *
+      11) var_accel_dumbbell< 3.16975 174 121 C (0.29 0.12 0.3 0.24 0.046)  
+        22) min_roll_forearm< 17.65 134  84 C (0.34 0.14 0.37 0.12 0.03)  
+          44) avg_pitch_dumbbell>=-30.70495 90  50 A (0.44 0.14 0.21 0.18 0.022) *
+          45) avg_pitch_dumbbell< -30.70495 44  13 C (0.11 0.14 0.7 0 0.045) *
+        23) min_roll_forearm>=17.65 40  14 D (0.12 0.05 0.075 0.65 0.1) *
+   3) stddev_roll_belt>=1.35 57  11 E (0.018 0.018 0 0.16 0.81) *
+    
+    removing empty (tr2 <- na.omit(training)) variables yields:
+    
+    modFit2 <- train(classe~., method="rpart", data=tr2[8:160])
+    n= 299 
+
+node), split, n, loss, yval, (yprob)
+      * denotes terminal node
+
+ 1) root 299 218 A (0.27 0.17 0.18 0.17 0.2)  
+   2) stddev_roll_belt< 1.35 242 162 A (0.33 0.21 0.23 0.18 0.058)  
+     4) min_roll_forearm< -34.6 27   0 A (1 0 0 0 0) *
+     5) min_roll_forearm>=-34.6 215 160 C (0.25 0.23 0.26 0.2 0.065)  
+      10) var_accel_dumbbell>=3.16975 41  12 B (0.073 0.71 0.049 0.024 0.15) *
+      11) var_accel_dumbbell< 3.16975 174 121 C (0.29 0.12 0.3 0.24 0.046)  
+        22) min_roll_forearm< 17.65 134  84 C (0.34 0.14 0.37 0.12 0.03)  
+          44) avg_pitch_dumbbell>=-30.70495 90  50 A (0.44 0.14 0.21 0.18 0.022) *
+          45) avg_pitch_dumbbell< -30.70495 44  13 C (0.11 0.14 0.7 0 0.045) *
+        23) min_roll_forearm>=17.65 40  14 D (0.12 0.05 0.075 0.65 0.1) *
+   3) stddev_roll_belt>=1.35 57  11 E (0.018 0.018 0 0.16 0.81) *
+    
+Finally using the variable suggested by these trees as the basis of a randome forest suggests the following model (note that cross validations is called directly from the train function): 
+
+```{r firstComputations, cache=TRUE}
+modFit4 <- train(classe~stddev_roll_belt+min_roll_forearm+var_accel_dumbbell+avg_pitch_dumbbell, method="rf", trControl=trainControl(method="cv",number=5), data=tr3)
+
+predictions <- predict(modFit4,newdata=testing)
+
+predictions
+
+confusionMatrix(predictions[1:20],testing[1:20])
+```
+
+
